@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestion des Utilisateurs (CRUD simple)</title>
+    <style>
+        body { font-family: sans-serif; margin: 20px; background-color: #f4f4f4; color: #333; }
+        .container { max-width: 900px; margin: 20px auto; padding: 20px; background-color: #fff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h1, h2 { color: #333; }
+        .btn {
+            padding: 10px 15px;
+            cursor: pointer;
+            border: none;
+            border-radius: 5px;
+            font-size: 1em;
+            margin-right: 5px;
+            transition: background-color 0.3s ease;
+        }
+        .btn-primary { background-color: #007bff; color: white; }
+        .btn-primary:hover { background-color: #0056b3; }
+        .btn-danger { background-color: #dc3545; color: white; }
+        .btn-danger:hover { background-color: #c82333; }
+        .btn-warning { background-color: #ffc107; color: black; }
+        .btn-warning:hover { background-color: #e0a800; }
+        .btn-info { background-color: #17a2b8; color: white; }
+        .btn-info:hover { background-color: #138496; }
+
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+        th { background-color: #e9ecef; }
+
+        .form-container {
+            margin-top: 20px;
+            padding: 20px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            background-color: #f9f9f9;
+            display: none; 
+        }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; font-weight: bold; }
+        .form-group input[type="text"],
+        .form-group input[type="number"],
+        .form-group textarea { 
+            width: calc(100% - 22px);
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 1em;
+        }
+        .form-actions { text-align: right; margin-top: 15px; }
+        .message {
+            padding: 10px;
+            margin-top: 10px;
+            border-radius: 5px;
+            color: white;
+            display: none;
+        }
+        .message.success { background-color: #28a745; }
+        .message.error { background-color: #dc3545; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Gestion des Utilisateurs</h1>
+
+        <button class="btn btn-primary" id="create-new-user-btn">Ajouter un nouvel utilisateur</button>
+
+        <div id="user-form-container" class="form-container">
+            <h2><span id="form-title">Créer</span> un utilisateur</h2>
+            <input type="hidden" id="user-id">
+
+            <div class="form-group">
+                <label for="name">Nom de l'utilisateur:</label>
+                <input type="text" id="name" required>
+            </div>
+
+            <div class="form-group">
+                <label for="age">Âge:</label>
+                <input type="number" id="age" required min="0">
+            </div>
+
+            <div class="form-actions">
+                <button class="btn btn-primary" id="save-user-btn">Enregistrer</button>
+                <button class="btn btn-warning" id="cancel-form-btn">Annuler</button>
+            </div>
+        </div>
+
+        <div id="message-display" class="message"></div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Nom</th>
+                    <th>Âge</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="users-table-body">
+                </tbody>
+        </table>
+    </div>
+
+    <script>
+       
+        const API_BASE_URL = 'http://localhost:3000/api/users'; 
+        const usersTableBody = document.getElementById('users-table-body');
+        const createNewUserBtn = document.getElementById('create-new-user-btn');
+        const userFormContainer = document.getElementById('user-form-container');
+        const formTitle = document.getElementById('form-title');
+        const userIdInput = document.getElementById('user-id');
+        const nameInput = document.getElementById('name');
+        const ageInput = document.getElementById('age');
+        const saveUserBtn = document.getElementById('save-user-btn');
+        const cancelFormBtn = document.getElementById('cancel-form-btn');
+        const messageDisplay = document.getElementById('message-display');
+
+        let isEditing = false;
+
+
+        function showMessage(msg, type = 'success') {
+            messageDisplay.textContent = msg;
+            messageDisplay.className = `message ${type}`;
+            messageDisplay.style.display = 'block';
+            setTimeout(() => {
+                messageDisplay.style.display = 'none';
+            }, 3000); 
+        }
+
+        function showForm(editMode = false, user = null) { 
+            isEditing = editMode;
+            userFormContainer.style.display = 'block';
+            createNewUserBtn.style.display = 'none'; 
+            if (editMode && user) {
+                formTitle.textContent = 'Modifier';
+                userIdInput.value = user._id;
+                nameInput.value = user.name;
+                ageInput.value = user.age;
+            } else {
+                formTitle.textContent = 'Créer';
+                userIdInput.value = '';
+                nameInput.value = '';
+                ageInput.value = '';
+            }
+        }
+
+        function hideForm() {
+            userFormContainer.style.display = 'none';
+            createNewUserBtn.style.display = 'block'; 
+        }
+
+        async function loadUsers() {
+            try {
+                const response = await fetch(API_BASE_URL);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const users = await response.json();
+
+                usersTableBody.innerHTML = ''; 
+                if (users.length === 0) {
+                    const row = usersTableBody.insertRow();
+                    const cell = row.insertCell(0);
+                    cell.colSpan = 4; 
+                    cell.textContent = "Aucun utilisateur trouvé. Ajoutez-en un !";
+                    cell.style.textAlign = 'center';
+                    return;
+                }
+
+                users.forEach(user => {
+                    const row = usersTableBody.insertRow();
+                    row.insertCell(0).textContent = user._id;
+                    row.insertCell(1).textContent = user.name;
+                    row.insertCell(2).textContent = user.age;
+                 
+                    const actionsCell = row.insertCell(3); 
+                    actionsCell.style.width = '1%';
+
+                    const editBtn = document.createElement('button');
+                    editBtn.textContent = 'Modifier';
+                    editBtn.className = 'btn btn-warning btn-sm';
+                    editBtn.onclick = () => editUser(user); 
+
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.textContent = 'Supprimer';
+                    deleteBtn.className = 'btn btn-danger btn-sm';
+                    deleteBtn.style.marginLeft = '5px';
+                    deleteBtn.onclick = () => deleteUser(user._id, user.name);
+                    actionsCell.appendChild(deleteBtn);
+                });
+            } catch (error) {
+                console.error('Erreur lors du chargement des utilisateurs:', error);
+                showMessage(`Erreur de connexion au serveur ou de chargement des données.`, 'error');
+            }
+        }
+
+        saveUserBtn.addEventListener('click', async () => {
+            const name = nameInput.value.trim();
+            const age = parseInt(ageInput.value, 10); 
+
+            if (!name || isNaN(age) || age < 0) {
+                showMessage('Veuillez remplir le nom et l\'âge correctement.', 'error');
+                return;
+            }
+
+            const userData = { name, age };
+
+            try {
+                let response;
+                if (isEditing) {
+                    const userId = userIdInput.value;
+                    response = await fetch(`${API_BASE_URL}/${userId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(userData)
+                    });
+                } else {
+                    response = await fetch(API_BASE_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(userData)
+                    });
+                }
+
+                const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.message || 'Une erreur est survenue');
+                }
+
+
+                showMessage(isEditing ? 'Utilisateur modifié avec succès !' : 'Utilisateur ajouté avec succès !', 'success');
+                hideForm();
+                loadUsers(); 
+            } catch (error) {
+                console.error('Erreur lors de l\'enregistrement:', error);
+                showMessage(`Erreur lors de l'enregistrement: ${error.message}`, 'error');
+            }
+        });
+
+        function editUser(user) {
+            showForm(true, user);
+        }
+
+        async function deleteUser(id, name) {
+            if (!confirm(`Êtes-vous sûr de vouloir supprimer l'utilisateur "${name}" ?`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/${id}`, {
+                    method: 'DELETE'
+                });
+                const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.message || 'Une erreur est survenue');
+                }
+             
+                showMessage(result.message || 'Utilisateur supprimé avec succès !', 'success');
+                loadUsers();
+            } catch (error) {
+                console.error('Erreur lors de la suppression:', error);
+                showMessage(`Erreur lors de la suppression: ${error.message}`, 'error');
+            }
+        }
+
+        createNewUserBtn.addEventListener('click', () => showForm(false));
+        cancelFormBtn.addEventListener('click', hideForm);
+
+       
+        loadUsers();
+    </script>
+</body>
+</html>
